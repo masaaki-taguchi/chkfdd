@@ -1,0 +1,256 @@
+*
+*	FDD existence checker 'CHKFDD.R' version 1.00
+*
+*	Programmed by M.Taguchi.
+*
+
+	.include	iocscall.mac
+	.include	doscall.mac
+
+PRINT	macro	data
+	pea	data(pc)
+	DOS	_PRINT
+	addq.l	#4,sp
+	endm
+
+DRIVE_0			equ	$90
+DRIVE_1			equ	$91
+DRIVE_2			equ	$92
+DRIVE_3			equ	$93
+
+*-----------------------------------------------
+*
+*	コマンドラインの解析
+*
+*-----------------------------------------------
+boot:
+	lea.l	mysp(pc),sp
+
+	tst.b	(a2)+
+	beq	help
+analyze_loop:
+	move.b	(a2)+,d0
+	beq	analyze_end
+	cmpi.b	#' ',d0
+	beq	analyze_loop
+	cmpi.b	#$09,d0
+	beq	analyze_loop
+	cmpi.b	#'-',d0
+	beq	@f
+	cmpi.b	#'/',d0
+	beq	@f
+	move.b	d0,(a4)+
+	bra	analyze_loop
+@@:	move.b	(a2)+,d0
+	beq	help
+	cmpi.b	#'0',d0
+	beq	fdd_0_check
+	cmpi.b	#'1',d0
+	beq	fdd_1_check
+	cmpi.b	#'2',d0
+	beq	fdd_2_check
+	cmpi.b	#'3',d0
+	beq	fdd_3_check
+	andi.b	#$df,d0
+	cmpi.b	#'H',d0
+	beq	help
+	cmpi.b	#'I',d0
+	beq	fdd_internal_check
+	cmpi.b	#'E',d0
+	beq	fdd_external_check
+	cmpi.b	#'S',d0
+	beq	set_silent
+	bra	help
+analyze_end:
+	bra	main
+
+fdd_internal_check:
+	lea.l	check_target(pc),a0
+	move.w	#DRIVE_0,(a0)+
+	move.w	#DRIVE_1,(a0)+
+	bra	analyze_loop
+
+fdd_external_check:
+	lea.l	check_target(pc),a0
+	move.w	#DRIVE_2,(a0)+
+	move.w	#DRIVE_3,(a0)+
+	bra	analyze_loop
+
+fdd_0_check:
+	lea.l	check_target(pc),a0
+	move.w	#DRIVE_0,(a0)+
+	clr.w	(a0)+
+	bra	analyze_loop
+
+fdd_1_check:
+	lea.l	check_target(pc),a0
+	move.w	#DRIVE_1,(a0)+
+	clr.w	(a0)+
+	bra	analyze_loop
+
+fdd_2_check:
+	lea.l	check_target(pc),a0
+	move.w	#DRIVE_2,(a0)+
+	clr.w	(a0)+
+	bra	analyze_loop
+
+fdd_3_check:
+	lea.l	check_target(pc),a0
+	move.w	#DRIVE_3,(a0)+
+	clr.w	(a0)+
+	bra	analyze_loop
+
+set_silent:
+	lea.l	is_silect(pc),a0
+	move.w	#1,(a0)
+	bra	analyze_loop
+
+check_target:
+	dc.w	0,0
+is_silect:
+	dc.w	0
+
+*-----------------------------------------------
+*
+*	メイン処理
+*
+*-----------------------------------------------
+main:
+	bsr	print_name
+
+	moveq.l	#0,d1
+	lea.l	check_target(pc),a0
+	move.w	(a0)+,d0
+	bsr	check_fdd
+	move.w	d0,d1
+	move.w	(a0)+,d0
+	beq	check_result
+	bsr	check_fdd
+	tst.w	d1
+	bne	check_result
+	move.w	d0,d1
+check_result:
+	tst.w	d1
+	bne	fdd_not_exist
+	move.w	#0,-(sp)
+	DOS	_EXIT2
+fdd_not_exist:
+	move.w	#1,-(sp)
+	DOS	_EXIT2
+
+*-----------------------------------------------
+*
+*	FDDの存在チェック
+*
+*	in : d0.w = $90:DRIVE0
+*                   $91:DRIVE1
+*                   $92:DRIVE2
+*                   $93:DRIVE3
+*	out : d0.w = 0:存在する 1:存在しない
+*
+*-----------------------------------------------
+check_fdd:
+	movem.l	d1-d3/a0,-(sp)
+	move.w	d0,d2
+	move.w	d0,d1
+	lsl.w	#8,d1
+	move.b	#$ff,d1
+	IOCS	_B_RECALI
+	btst.l	#28,d0
+	bne	check_fdd_not_exist
+	moveq.l	#0,d3
+	bra	check_fdd_display_drive
+check_fdd_not_exist:
+	moveq.l	#1,d3
+
+check_fdd_display_drive:
+	lea.l	is_silect(pc),a0
+	tst.w	(a0)
+	bne	check_fdd_exit
+	cmpi.w	#DRIVE_0,d2
+	bne	@f
+	PRINT	m_drive_0
+	bra	check_fdd_display_result
+@@:	cmpi.w	#DRIVE_1,d2
+	bne	@f
+	PRINT	m_drive_1
+	bra	check_fdd_display_result
+@@:	cmpi.w	#DRIVE_2,d2
+	bne	@f
+	PRINT	m_drive_2
+	bra	check_fdd_display_result
+@@:	cmpi.w	#DRIVE_3,d2
+	bne	check_fdd_exit
+	PRINT	m_drive_3
+
+check_fdd_display_result:
+	tst.w	d3
+	bne	@f
+	PRINT	m_exist
+	bra	check_fdd_exit
+@@:	PRINT	m_not_exist
+check_fdd_exit:
+	move.w	d3,d0
+	movem.l	(sp)+,d1-d3/a0
+	rts
+
+*-----------------------------------------------
+*
+*	プログラム名の表示
+*
+*-----------------------------------------------
+print_name:
+	movem.l	d0/a0-a1,-(sp)
+	lea.l	is_silect(pc),a0
+	tst.w	(a0)
+	bne	@f
+	lea.l	displayed_name(pc),a0
+	tst.w	(a0)
+	bne	@f
+	PRINT	m_name
+	lea.l	displayed_name(pc),a0
+	move.w	#1,(a0)
+@@:	movem.l	(sp)+,d0/a0-a1
+	rts
+
+displayed_name:
+	dc.w	0
+
+help:
+	bsr	print_name
+	lea.l	m_usage(pc),a1
+*	bra	error_exit
+error_exit:
+	IOCS	_B_PRINT
+	move.w	#-1,-(sp)
+	DOS	_EXIT2
+
+m_name:
+	dc.b	"FDD existence checker 'CHKFDD.R' version 1.00",13,10
+	dc.b	'Programmed by M.Taguchi.',13,10,0
+m_usage:
+	dc.b	'Usage: CHKFDD -[switch]',13,10
+	dc.b	'    -I 内蔵FDD(ドライブ0、ドライブ1)の存在チェック',13,10
+	dc.b	'    -E 拡張FDD(ドライブ2、ドライブ3)の存在チェック',13,10
+	dc.b	'    -0 ドライブ0の存在チェック',13,10
+	dc.b	'    -1 ドライブ1の存在チェック',13,10
+	dc.b	'    -2 ドライブ2の存在チェック',13,10
+	dc.b	'    -3 ドライブ3の存在チェック',13,10
+	dc.b	'    -S テキスト出力無し',13,10,0
+m_drive_0:
+	dc.b	'ドライブ0',0
+m_drive_1:
+	dc.b	'ドライブ1',0
+m_drive_2:
+	dc.b	'ドライブ2',0
+m_drive_3:
+	dc.b	'ドライブ3',0
+m_exist:
+	dc.b	'は存在します',13,10,0
+m_not_exist:
+	dc.b	'は存在しません',13,10,0
+
+	.even
+mystack:
+	ds.l	32
+mysp:
