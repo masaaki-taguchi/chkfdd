@@ -39,8 +39,7 @@ analyze_loop:
 	beq	@f
 	cmpi.b	#'/',d0
 	beq	@f
-	move.b	d0,(a4)+
-	bra	analyze_loop
+	bra	help
 @@:	move.b	(a2)+,d0
 	beq	help
 	cmpi.b	#'0',d0
